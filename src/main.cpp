@@ -3,13 +3,16 @@
  Author:	DIYLESS
 */
 
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
 #include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+
 #include <OneWire.h>
 #include <DallasTemperature.h>
+
 #include <OpenTherm.h>
+
 #include "RingBuffer.h"
 
 const char* ssid = "WIFI-SSID";
@@ -23,7 +26,7 @@ const int OT_OUT_PIN = 22; //5 for ESP8266 (D1), 22 for ESP32
 const int ROOM_TEMP_SENSOR_PIN = 18; //14 for ESP8266 (D5), 18 for ESP32
 
 OpenTherm ot(OT_IN_PIN, OT_OUT_PIN);
-WebServer server(80);
+ESP8266WebServer server(80);
 OneWire oneWire(ROOM_TEMP_SENSOR_PIN);
 DallasTemperature sensors(&oneWire);
 
@@ -183,38 +186,12 @@ String getInfo() {
     return page;
 }
 
-void handleInfo() {
-    Serial.println(">>> Info request");
-    String tStr = server.arg("value");
-    if (!tStr.isEmpty())
-    {
-        float t = tStr.toFloat();
-        Serial.println(">>> Room Setpoint request: " + String(t));
-        updateRoomSetpointRequest(t);
-    }
-    server.send(200, "text/html", getInfo() + getChart());
+void updateRoomSetpointRequest(float t) {
+    if (t < 0) t = 0;
+    if (t > 30) t = 30;
+    room_setpoint = t;
 }
 
-void handleRoot() {
-    String page = FPSTR(HTTP_HEAD_BEGIN);
-    page.replace("{v}", "Wi-Fi Thermostat");
-    page += FPSTR(HTTP_STYLE);
-    page += "<script>";
-    page += FPSTR(HTTP_SCRIPT_VARS);
-    page += FPSTR(HTTP_SCRIPT_START_DRAG);
-    page += FPSTR(HTTP_SCRIPT_DO_DRAG);
-    page += FPSTR(HTTP_SCRIPT_STOP_DRAG);
-    page += FPSTR(HTTP_SCRIPT_SEND_STATUS);
-    page += FPSTR(HTTP_SCRIPT_ATTACH_EVENTS);
-    page += FPSTR(HTTP_SCRIPT_UPDATE);
-    page += "</script>";
-    page += FPSTR(HTTP_HEAD_END);
-    page += F("<h1>Wi-Fi Thermostat</h1><div id=\"info\">");
-    page += getInfo() + getChart();
-    page += F("</div>");
-    page += FPSTR(HTTP_END);
-    server.send(200, "text/html", page);
-}
 
 void handleMessage() {
     byte type = server.arg("type").toInt() ? 1 : 0;
@@ -288,12 +265,6 @@ void addModulation(String& out, char* buf)
     sprintf(buf, ",%d,%d,%d,%d,0,%d", i, 172 - prev, i, 172, 172);
     out += buf;
     out += "\" />";
-}
-
-void updateRoomSetpointRequest(float t) {
-    if (t < 0) t = 0;
-    if (t > 30) t = 30;
-    room_setpoint = t;
 }
 
 void handleRoomSetpoint() {
@@ -425,55 +396,37 @@ void handleChart() {
     server.send(200, "image/svg+xml", getChart());
 }
 
-
-void setup(void) {
-    pinMode(BUILTIN_LED, OUTPUT);
-    digitalWrite(BUILTIN_LED, 0);
-    Serial.begin(115200);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    Serial.println("");
-
-    // Wait for connection
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+void handleInfo() {
+    Serial.println(">>> Info request");
+    String tStr = server.arg("value");
+    if (!tStr.isEmpty())
+    {
+        float t = tStr.toFloat();
+        Serial.println(">>> Room Setpoint request: " + String(t));
+        updateRoomSetpointRequest(t);
     }
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+    server.send(200, "text/html", getInfo() + getChart());
+}
 
-    if (MDNS.begin("thermostat")) {
-        Serial.println("MDNS responder started");
-    }
-
-    server.on("/", handleRoot);
-    server.on("/info", handleInfo);
-    server.on("/chart.svg", handleChart);
-    server.on("/msg", handleMessage);
-    server.on("/status", handleStatus);
-    server.on("/ch_temp", handleCHTemp);
-    server.on("/room_setpoint", handleRoomSetpoint);
-    server.on("/test", []() {
-        server.send(200, "text/plain", "this works as well");
-        });
-
-    server.onNotFound(handleNotFound);
-
-    server.begin();
-    Serial.println("HTTP server started");
-
-    ot.begin(handleInterrupt, processResponse);
-    marked_min = millis() / 60000;
-
-    //Init DS18B20 sensor
-    sensors.begin();
-    sensors.requestTemperatures();
-    sensors.setWaitForConversion(false); //switch to async mode
-    room_temperature, room_temperature_last = getTemperature();
-    ts = millis();
+void handleRoot() {
+    String page = FPSTR(HTTP_HEAD_BEGIN);
+    page.replace("{v}", "Wi-Fi Thermostat");
+    page += FPSTR(HTTP_STYLE);
+    page += "<script>";
+    page += FPSTR(HTTP_SCRIPT_VARS);
+    page += FPSTR(HTTP_SCRIPT_START_DRAG);
+    page += FPSTR(HTTP_SCRIPT_DO_DRAG);
+    page += FPSTR(HTTP_SCRIPT_STOP_DRAG);
+    page += FPSTR(HTTP_SCRIPT_SEND_STATUS);
+    page += FPSTR(HTTP_SCRIPT_ATTACH_EVENTS);
+    page += FPSTR(HTTP_SCRIPT_UPDATE);
+    page += "</script>";
+    page += FPSTR(HTTP_HEAD_END);
+    page += F("<h1>Wi-Fi Thermostat</h1><div id=\"info\">");
+    page += getInfo() + getChart();
+    page += F("</div>");
+    page += FPSTR(HTTP_END);
+    server.send(200, "text/html", page);
 }
 
 
@@ -580,6 +533,56 @@ void handleOpenTherm() {
         }
     }
     ot.process();
+}
+
+void setup(void) {
+    pinMode(BUILTIN_LED, OUTPUT);
+    digitalWrite(BUILTIN_LED, 0);
+    Serial.begin(115200);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+    Serial.println("");
+
+    // Wait for connection
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("");
+    Serial.print("Connected to ");
+    Serial.println(ssid);
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    if (MDNS.begin("thermostat")) {
+        Serial.println("MDNS responder started");
+    }
+
+    server.on("/", handleRoot);
+    server.on("/info", handleInfo);
+    server.on("/chart.svg", handleChart);
+    server.on("/msg", handleMessage);
+    server.on("/status", handleStatus);
+    server.on("/ch_temp", handleCHTemp);
+    server.on("/room_setpoint", handleRoomSetpoint);
+    server.on("/test", []() {
+        server.send(200, "text/plain", "this works as well");
+        });
+
+    server.onNotFound(handleNotFound);
+
+    server.begin();
+    Serial.println("HTTP server started");
+
+    ot.begin(handleInterrupt, processResponse);
+    marked_min = millis() / 60000;
+
+    //Init DS18B20 sensor
+    sensors.begin();
+    sensors.requestTemperatures();
+    sensors.setWaitForConversion(false); //switch to async mode
+    room_temperature, room_temperature_last = getTemperature();
+    ts = millis();
 }
 
 void loop(void) {
