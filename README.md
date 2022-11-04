@@ -7,6 +7,8 @@ Detailed instructions you can find in [ESP32 Wi-Fi OpenTherm Thermostat](https:/
 ## ESP8266 Wi-Fi OpenTherm Thermostat Web Server
 ![ESP8266 Wi-Fi OpenTherm Thermostat Web Server](esp8266-wifi-thermostat-web-server.webp)
 
+## Passage en français + ajout des températures de sorti et d'entrée (retour) du chauffage.
+
 ## License
 Copyright (c) 2020 [DIYLESS](http://diyless.com/). Licensed under the [MIT license](/LICENSE?raw=true).
 
