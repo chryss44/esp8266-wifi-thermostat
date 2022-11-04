@@ -164,7 +164,10 @@ void OneWire::begin(uint8_t pin)
 uint8_t OneWire::reset(void)
 {
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
+	#pragma GCC diagnostic push
+        #pragma GCC diagnostic warning "-Wunused-variable"
 	volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
+        #pragma GCC diagnostic pop
 	uint8_t r;
 	uint8_t retries = 125;
 
