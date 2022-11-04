@@ -59,20 +59,24 @@ const char HTTP_SCRIPT_UPDATE[] PROGMEM = "window.setInterval(\"update()\", 3000
 const char HTTP_HEAD_END[] PROGMEM = "</head><body onload=\"attachEvents(1)\"><div style=\"text-align:left;display:inline-block;\">";
 const char HTTP_END[] PROGMEM = "</div></body></html>";
 const char HTTP_INFO[] PROGMEM = "<table width=\"100%\">\
-<tr><th>Central Heating</th><td><label class=\"s\"><input type=\"checkbox\" id=\"0\" {s} /><div class=\"sl\"></div></label></td></tr>\
-<tr><th>Domestic Hot Water</th><td><label class=\"s\"><input type=\"checkbox\" id=\"1\" {d} /><div class=\"sl\"></div></label></td></tr>\
-<tr><th>Cooling</th><td><label class=\"s\"><input type=\"checkbox\" id=\"2\" {c} /><div class=\"sl\"></div></label></td></tr>\
-<tr><th>Fault</th><td><label class=\"s\"><input class=\"e\" type=\"checkbox\" disabled {0} /><div class=\"sl\"></div></label></td></tr>\
-<tr><th>Diagnostic</th><td><label class=\"s\"><input class=\"e\" type=\"checkbox\" disabled {6} /><div class=\"sl\"></div></label></td></tr>\
-<tr><th>CH temperature</th><td><div class=\"p\"><div style=\"width:{t}%\">&nbsp;</div><span>{t} &#8451;</span></div></td></tr>\
-<tr><th>Relative Modulation Level</th><td width=\"86px\"><div class=\"p\"><div style=\"width:{m}%\">&nbsp;</div><span>{m} %</span></div></td></tr>\
-<tr><th>Room Temperature</th><td><div class=\"p\"><div style=\"width:{rp}%\">&nbsp;</div><span>{r} &#8451;</span></div></td></tr>\
+<tr><th>Chauffage central</th><td><label class=\"s\"><input type=\"checkbox\" id=\"0\" {s} /><div class=\"sl\"></div></label></td></tr>\
+<tr><th>Eau chaude</th><td><label class=\"s\"><input type=\"checkbox\" id=\"1\" {d} /><div class=\"sl\"></div></label></td></tr>\
+<tr><th>Refroidissement</th><td><label class=\"s\"><input type=\"checkbox\" id=\"2\" {c} /><div class=\"sl\"></div></label></td></tr>\
+<tr><th>Faute</th><td><label class=\"s\"><input class=\"e\" type=\"checkbox\" disabled {0} /><div class=\"sl\"></div></label></td></tr>\
+<tr><th>Diagnostique</th><td><label class=\"s\"><input class=\"e\" type=\"checkbox\" disabled {6} /><div class=\"sl\"></div></label></td></tr>\
+<tr><th>Température ECS</th><td><div class=\"p\"><div style=\"width:{t}%\">&nbsp;</div><span>{t} &#8451;</span></div></td></tr>\
+<tr><th>Température départ</th><td><div class=\"p\"><div style=\"width:{to}%\">&nbsp;</div><span>{t} &#8451;</span></div></td></tr>\
+<tr><th>Température retour</th><td><div class=\"p\"><div style=\"width:{tr}%\">&nbsp;</div><span>{t} &#8451;</span></div></td></tr>\
+<tr><th>Niveau de modulation relatif</th><td width=\"86px\"><div class=\"p\"><div style=\"width:{m}%\">&nbsp;</div><span>{m} %</span></div></td></tr>\
+<tr><th>Temperature de la pièce</th><td><div class=\"p\"><div style=\"width:{rp}%\">&nbsp;</div><span>{r} &#8451;</span></div></td></tr>\
 </table><input type=\"hidden\" id=\"rsp\" value=\"{rsp}\"/>";
 
 
 uint8_t requests[] = {
   OpenThermMessageID::Status,
   OpenThermMessageID::TSet,
+  OpenThermMessageID::Toutside,
+  OpenThermMessageID::Tret,
   OpenThermMessageID::Tboiler,
   OpenThermMessageID::RelModLevel,
 };
@@ -86,6 +90,8 @@ uint8_t CHEnabled = 0, DHWEnabled = 0, CoolingEnabled = 0;
 
 uint8_t boiler_status = 0;
 float ch_temperature = 0;
+float tr_temperature = 0;
+float to_temperature = 0;
 float ch_setpoint = 0;
 float room_temperature = 0;
 float room_setpoint = 5;
@@ -178,6 +184,8 @@ String getInfo() {
     page.replace("{6}", bitRead(boiler_status, 6) ? "checked=\"checked\"" : "");
 
     page.replace("{t}", String(ch_temperature));
+    page.replace("{to}", String(to_temperature));
+    page.replace("{tr}", String(tr_temperature));
     page.replace("{m}", String(modulation_level));
     page.replace("{r}", String(room_temperature));
     page.replace("{rp}", String(room_temperature <= 25 ? room_temperature * 4 : 25));
@@ -320,7 +328,7 @@ String getChart() {
 
     byte bits[] = { 3,1,2 };
     String colors[] = { "#d17905", "#f05b4f", "#0544d3" };
-    String titles[] = { "Flame", "Central Heating", "Domestic Hot Water" };
+    String titles[] = { "Flamme", "Chauffage central", "Eau chaude" };
     int i;
     byte prev;
     for (byte b = 0; b < 3; b++) {
@@ -369,7 +377,7 @@ String getChart() {
     addRoomTemperature(out, buf);
     addRoomSetpoint(out, buf);
     out += "</g>";
-    out += F("<text x=\"0\" y=\"296\" fill=\"#59922b\">Room Thermperature</text>");
+    out += F("<text x=\"0\" y=\"296\" fill=\"#59922b\">Thempérature de la pièce</text>");
 
 
     out += "</g>";
@@ -458,6 +466,16 @@ void processResponse(unsigned long response, OpenThermResponseStatus status) {
         curr_item->ch_temperature = ch_temperature;
         Serial.println("CH temp: " + String(ch_temperature));
         break;
+    case OpenThermMessageID::Toutside:
+        to_temperature = (response & 0xFFFF) / 256.0;
+        curr_item->to_temperature = to_temperature;
+        Serial.println("TO temp: " + String(to_temperature));
+        break;
+    case OpenThermMessageID::Tret:
+        tr_temperature = (response & 0xFFFF) / 256.0;
+        curr_item->tr_temperature = tr_temperature;
+        Serial.println("TR temp: " + String(tr_temperature));
+        break;
     case OpenThermMessageID::RelModLevel:
         modulation_level = (response & 0xFFFF) / 256.0;
         curr_item->modulation = modulation_level;
@@ -472,6 +490,8 @@ void clearItem(ChartItem* item)
 {
     curr_item->status = 0;
     curr_item->ch_temperature = 0;
+    curr_item->to_temperature = 0;
+    curr_item->tr_temperature = 0;
     curr_item->room_temperature = 0;
     curr_item->modulation = 0;
 }
@@ -493,6 +513,10 @@ unsigned int buildRequest(byte req_idx)
         return ot.buildRequest(OpenThermMessageType::WRITE, OpenThermMessageID::TSet, ((uint16_t)ch_setpoint) << 8);
     case OpenThermMessageID::Tboiler:
         return ot.buildRequest(OpenThermMessageType::READ, OpenThermMessageID::Tboiler, 0);
+    case OpenThermMessageID::Toutside:
+        return ot.buildRequest(OpenThermMessageType::READ, OpenThermMessageID::Toutside, 0);
+    case OpenThermMessageID::Tret:
+        return ot.buildRequest(OpenThermMessageType::READ, OpenThermMessageID::Tret, 0);
     case OpenThermMessageID::RelModLevel:
         return ot.buildRequest(OpenThermMessageType::READ, OpenThermMessageID::RelModLevel, 0);
     }
